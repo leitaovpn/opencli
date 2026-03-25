@@ -51,6 +51,7 @@ export default defineConfig({
                 { text: 'Twitter / X', link: '/adapters/browser/twitter' },
                 { text: 'Reddit', link: '/adapters/browser/reddit' },
                 { text: 'Bilibili', link: '/adapters/browser/bilibili' },
+                { text: 'AliPan', link: '/adapters/browser/alipan' },
                 { text: 'Zhihu', link: '/adapters/browser/zhihu' },
                 { text: 'Xiaohongshu', link: '/adapters/browser/xiaohongshu' },
                 { text: 'Weibo', link: '/adapters/browser/weibo' },
