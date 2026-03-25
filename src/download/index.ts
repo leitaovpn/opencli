@@ -2,7 +2,7 @@
  * Download utilities: HTTP downloads, yt-dlp wrapper, format conversion.
  */
 
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as https from 'node:https';
@@ -34,7 +34,46 @@ export interface YtdlpOptions {
 
 /** Check if yt-dlp is available in PATH. */
 export function checkYtdlp(): boolean {
-  return isBinaryInstalled('yt-dlp');
+  return resolveYtdlpRunner() !== null;
+}
+
+type YtdlpRunner = {
+  command: string;
+  prefixArgs: string[];
+  label: string;
+};
+
+function canRun(cmd: string, args: string[]): boolean {
+  try {
+    execFileSync(cmd, args, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveYtdlpRunner(): YtdlpRunner | null {
+  // Preferred path: native yt-dlp command.
+  if (isBinaryInstalled('yt-dlp') && canRun('yt-dlp', ['--version'])) {
+    return { command: 'yt-dlp', prefixArgs: [], label: 'yt-dlp' };
+  }
+
+  // Fallback for broken brew wrapper: python -m yt_dlp.
+  if (isBinaryInstalled('python3') && canRun('python3', ['-m', 'yt_dlp', '--version'])) {
+    return { command: 'python3', prefixArgs: ['-m', 'yt_dlp'], label: 'python3 -m yt_dlp' };
+  }
+
+  return null;
+}
+
+function summarizeYtdlpError(errorOutput: string, exitCode: number | null): string {
+  const lines = errorOutput
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const tail = lines.slice(-6).join(' | ');
+  const base = tail || `Exit code ${exitCode ?? '?'}`;
+  return base.slice(0, 800);
 }
 
 /** Domains that host video content and can be downloaded via yt-dlp. */
@@ -225,8 +264,13 @@ export async function ytdlpDownload(
 ): Promise<{ success: boolean; size: number; error?: string }> {
   const { cookiesFile, format = 'best', extraArgs = [], onProgress } = options;
 
-  if (!checkYtdlp()) {
-    return { success: false, size: 0, error: 'yt-dlp not installed. Install with: pip install yt-dlp' };
+  const runner = resolveYtdlpRunner();
+  if (!runner) {
+    return {
+      success: false,
+      size: 0,
+      error: 'yt-dlp is unavailable or broken. Try: brew reinstall yt-dlp OR pip install -U yt-dlp',
+    };
   }
 
   return new Promise((resolve) => {
@@ -256,7 +300,7 @@ export async function ytdlpDownload(
 
     args.push(...extraArgs);
 
-    const proc = spawn('yt-dlp', args, {
+    const proc = spawn(runner.command, [...runner.prefixArgs, ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -302,13 +346,14 @@ export async function ytdlpDownload(
           const stats = fs.statSync(actualFile);
           resolve({ success: true, size: stats.size });
         } else {
-          resolve({ success: false, size: 0, error: errorOutput.slice(0, 200) || `Exit code ${code}` });
+          const detail = summarizeYtdlpError(errorOutput, code);
+          resolve({ success: false, size: 0, error: `${runner.label}: ${detail}` });
         }
       }
     });
 
     proc.on('error', (err) => {
-      resolve({ success: false, size: 0, error: err.message });
+      resolve({ success: false, size: 0, error: `${runner.label}: ${err.message}` });
     });
   });
 }

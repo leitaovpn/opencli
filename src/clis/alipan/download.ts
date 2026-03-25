@@ -1,32 +1,65 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { formatCookieHeader, httpDownload, sanitizeFilename } from '../../download/index.js';
-import { formatBytes } from '../../download/progress.js';
+import { formatCookieHeader, httpDownload, sanitizeFilename, ytdlpDownload } from '../../download/index.js';
+import { createProgressBar, formatBytes } from '../../download/progress.js';
 import { CommandExecutionError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
 import { alipanPostWithFallback, alipanResolvePath } from './utils.js';
 
 type AliPanFileDetail = {
+  category?: string;
+  download_url?: string;
   file_id?: string;
   name?: string;
   type?: string;
+  url?: string;
   size?: number;
 };
 
 type AliPanDownloadUrlResponse = {
+  cdn_url?: string;
+  download_url?: string;
+  file_id?: string;
   url?: string;
   internal_url?: string;
   expiration?: string;
   method?: string;
+  size?: number;
+};
+
+type AliPanVideoPreviewTask = {
+  status?: string;
+  template_height?: number;
+  template_id?: string;
+  url?: string;
+};
+
+type AliPanVideoPreviewResponse = {
+  video_preview_play_info?: {
+    live_transcoding_task_list?: AliPanVideoPreviewTask[];
+  };
 };
 
 function listDownloadUrls(payload: AliPanDownloadUrlResponse | null | undefined): string[] {
-  const candidates = [payload?.url, payload?.internal_url];
+  const candidates = [payload?.url, payload?.internal_url, payload?.cdn_url, payload?.download_url];
   const unique = new Set<string>();
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim()) {
       unique.add(candidate.trim());
     }
+  }
+  return [...unique];
+}
+
+function listVideoPreviewUrls(payload: AliPanVideoPreviewResponse | null | undefined): string[] {
+  const taskList = payload?.video_preview_play_info?.live_transcoding_task_list;
+  const tasks = Array.isArray(taskList) ? taskList : [];
+  const sorted = [...tasks].sort((a, b) => (b.template_height ?? 0) - (a.template_height ?? 0));
+  const unique = new Set<string>();
+  for (const task of sorted) {
+    if (task?.status && task.status !== 'finished') continue;
+    const url = task?.url;
+    if (typeof url === 'string' && url.trim()) unique.add(url.trim());
   }
   return [...unique];
 }
@@ -55,6 +88,7 @@ cli({
     { name: 'name', default: '', help: 'Override local filename' },
     { name: 'overwrite', type: 'boolean', default: false, help: 'Overwrite existing file if present' },
     { name: 'timeout', type: 'int', default: 120000, help: 'Download timeout in milliseconds' },
+    { name: 'show-progress', type: 'boolean', default: true, help: 'Show realtime download progress in terminal' },
   ],
   columns: ['status', 'file_id', 'path', 'name', 'size', 'saved_to', 'endpoint'],
   func: async (page, kwargs) => {
@@ -67,6 +101,7 @@ cli({
     const overwrite = Boolean(kwargs.overwrite);
     const timeoutRaw = Number(kwargs.timeout ?? 120000);
     const timeout = Math.max(1000, Number.isFinite(timeoutRaw) ? timeoutRaw : 120000);
+    const showProgress = Boolean(kwargs['show-progress']) && process.stderr.isTTY !== false;
 
     if (!fileIdArg && !pathArg) {
       throw new CommandExecutionError('Provide file-id positional argument or --path');
@@ -126,10 +161,12 @@ cli({
       throw new CommandExecutionError(`AliPan returned unsupported download method: ${method}`);
     }
 
-    const downloadUrls = listDownloadUrls(urlResult.data);
-    if (downloadUrls.length === 0) {
-      throw new CommandExecutionError('AliPan did not return a usable download URL');
-    }
+    const downloadUrls = [
+      ...new Set<string>([
+        ...listDownloadUrls(urlResult.data),
+        ...listDownloadUrls(detail),
+      ]),
+    ];
 
     const allCookies = [
       ...(await page.getCookies({ domain: 'alipan.com' })),
@@ -144,33 +181,91 @@ cli({
     };
 
     let downloaded: { success: boolean; size: number; error?: string } | null = null;
+    let usedEndpoint = urlResult.endpoint;
     const errors: string[] = [];
-    for (const u of downloadUrls) {
-      const uMasked = maskUrl(u);
-      const withHeaders = await httpDownload(u, savePath, {
-        timeout,
-        headers: baseHeaders,
-      });
-      if (withHeaders.success) {
-        downloaded = withHeaders;
-        break;
-      }
-      errors.push(`${uMasked} -> ${withHeaders.error ?? 'unknown error'}`);
+    const progressBar = showProgress ? createProgressBar(safeName, 0, 1) : null;
 
-      if (!cookieHeader) continue;
-      const withHeadersAndCookies = await httpDownload(u, savePath, {
-        timeout,
-        headers: baseHeaders,
-        cookies: cookieHeader,
-      });
-      if (withHeadersAndCookies.success) {
-        downloaded = withHeadersAndCookies;
-        break;
+    if (downloadUrls.length > 0) {
+      const attempts: Array<{ url: string; cookies?: string }> = [];
+      for (const u of downloadUrls) {
+        attempts.push({ url: u });
+        if (cookieHeader) attempts.push({ url: u, cookies: cookieHeader });
       }
-      errors.push(`${uMasked} (with cookies) -> ${withHeadersAndCookies.error ?? 'unknown error'}`);
+
+      for (let i = 0; i < attempts.length; i++) {
+        const attempt = attempts[i];
+        const uMasked = maskUrl(attempt.url);
+        const label = attempts.length > 1 ? `attempt ${i + 1}/${attempts.length}` : undefined;
+        const result = await httpDownload(attempt.url, savePath, {
+          timeout,
+          headers: baseHeaders,
+          cookies: attempt.cookies,
+          onProgress: (received, total) => {
+            progressBar?.update(received, total, label);
+          },
+        });
+        if (result.success) {
+          downloaded = result;
+          break;
+        }
+        errors.push(`${uMasked}${attempt.cookies ? ' (with cookies)' : ''} -> ${result.error ?? 'unknown error'}`);
+      }
+    } else {
+      errors.push('Direct download URL is empty');
+    }
+
+    // Some AliPan videos intentionally return empty direct URL. Fallback to preview stream.
+    if (!downloaded?.success && detail.category === 'video') {
+      const previewResult = await alipanPostWithFallback<AliPanVideoPreviewResponse>(page, [
+        {
+          url: 'https://api.aliyundrive.com/v2/file/get_video_preview_play_info',
+          body: {
+            file_id: fileId,
+            category: 'live_transcoding',
+            get_subtitle_info: true,
+          },
+        },
+        {
+          url: 'https://api.aliyundrive.com/v2/file/get_video_preview_play_info',
+          body: {
+            file_id: fileId,
+            category: 'original',
+          },
+        },
+      ]);
+
+      const previewUrls = listVideoPreviewUrls(previewResult.data);
+      if (previewUrls.length > 0) {
+        usedEndpoint = `${previewResult.endpoint} (yt-dlp)`;
+        const previewUrl = previewUrls[0];
+        const totalPreviewBytes = typeof detail.size === 'number' && detail.size > 0 ? detail.size : 0;
+        const ytdlpResult = await ytdlpDownload(previewUrl, savePath, {
+          extraArgs: [
+            '--add-header', 'Referer: https://www.alipan.com/',
+            '--add-header', 'Origin: https://www.alipan.com',
+            '--merge-output-format', 'mp4',
+          ],
+          onProgress: (percent) => {
+            if (totalPreviewBytes > 0) {
+              const current = Math.min(totalPreviewBytes, Math.round((percent / 100) * totalPreviewBytes));
+              progressBar?.update(current, totalPreviewBytes, 'preview stream');
+            } else {
+              progressBar?.update(percent, 100, 'preview stream');
+            }
+          },
+        });
+        if (ytdlpResult.success) {
+          downloaded = ytdlpResult;
+        } else {
+          errors.push(`Preview stream download failed: ${ytdlpResult.error ?? 'unknown error'}`);
+        }
+      } else {
+        errors.push('Video preview play URL is empty');
+      }
     }
 
     if (!downloaded?.success) {
+      progressBar?.fail('download failed');
       throw new CommandExecutionError(`Download failed after retries: ${errors.join(' | ')}`);
     }
 
@@ -178,6 +273,7 @@ cli({
       ? downloaded.size
       : (typeof detail.size === 'number' ? detail.size : 0);
     const size = bytes > 0 ? formatBytes(bytes) : '-';
+    progressBar?.complete(true, size);
 
     return [{
       status: 'success',
@@ -186,7 +282,7 @@ cli({
       name: safeName,
       size,
       saved_to: savePath,
-      endpoint: urlResult.endpoint,
+      endpoint: usedEndpoint,
     }];
   },
 });
