@@ -217,6 +217,9 @@ cli({
       const deleteCmd = canBuildPath
         ? `opencli alipan delete --path ${quoteShellArg(childPath)} --yes true`
         : `opencli alipan delete ${fileId} --yes true`;
+      const downloadCmd = canBuildPath
+        ? `opencli alipan download --path ${quoteShellArg(childPath)}`
+        : `opencli alipan download ${fileId}`;
 
       return {
         name,
@@ -226,7 +229,7 @@ cli({
         file_id: fileId,
         parent_file_id: item?.parent_file_id ?? '',
         ops: showCommands
-          ? `rename: ${renameCmd} | move: ${moveCmd} | delete: ${deleteCmd}`
+          ? `rename: ${renameCmd} | move: ${moveCmd} | delete: ${deleteCmd} | download: ${downloadCmd}`
           : '-',
       };
     });
