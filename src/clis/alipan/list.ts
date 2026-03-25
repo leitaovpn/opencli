@@ -18,6 +18,21 @@ type AliPanListResponse = {
   next_marker?: string;
 };
 
+function quoteShellArg(value: string): string {
+  return JSON.stringify(value);
+}
+
+function normalizeBasePath(pathArg: string): string {
+  const normalized = pathArg.trim();
+  if (!normalized || normalized === '/') return '/';
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
+function joinChildPath(basePath: string, childName: string): string {
+  if (basePath === '/') return `/${childName}`;
+  return `${basePath.replace(/\/+$/, '')}/${childName}`;
+}
+
 function formatBytes(bytes: number | undefined): string {
   if (!Number.isFinite(bytes) || (bytes as number) < 0) return '-';
   const value = Number(bytes);
@@ -43,8 +58,9 @@ cli({
     { name: 'limit', type: 'int', default: 50, help: 'Maximum rows to return (1-200)' },
     { name: 'order-by', default: 'updated_at', choices: ['updated_at', 'created_at', 'name', 'size'], help: 'Sort field' },
     { name: 'order-direction', default: 'DESC', choices: ['ASC', 'DESC'], help: 'Sort direction' },
+    { name: 'show-commands', type: 'boolean', default: false, help: 'Include copyable rename/move/delete snippets in output' },
   ],
-  columns: ['name', 'type', 'size', 'updated_at', 'file_id', 'parent_file_id'],
+  columns: ['name', 'type', 'size', 'updated_at', 'file_id', 'parent_file_id', 'ops'],
   func: async (page: IPage | null, kwargs) => {
     if (!page) throw new CommandExecutionError('Browser page required for alipan list');
 
@@ -56,6 +72,8 @@ cli({
     const typeFilter = String(kwargs.type ?? 'all');
     const orderBy = String(kwargs['order-by'] ?? 'updated_at');
     const orderDirection = String(kwargs['order-direction'] ?? 'DESC');
+    const showCommands = Boolean(kwargs['show-commands']);
+    const basePath = normalizeBasePath(pathArg);
 
     await page.goto('https://www.alipan.com/drive/home');
     await page.wait(1);
@@ -186,13 +204,30 @@ cli({
 
     return filtered.slice(0, limit).map((item) => {
       const rawSize = typeof item?.size === 'number' ? item.size : undefined;
+      const fileId = item?.file_id ?? '';
+      const name = item?.name ?? '';
+      const canBuildPath = pathArg.trim() !== '' || parentFileId === 'root';
+      const childPath = canBuildPath ? joinChildPath(basePath, name) : '';
+      const renameCmd = canBuildPath
+        ? `opencli alipan rename --path ${quoteShellArg(childPath)} --new-name <new-name>`
+        : `opencli alipan rename ${fileId} <new-name>`;
+      const moveCmd = canBuildPath
+        ? `opencli alipan move --path ${quoteShellArg(childPath)} --to-path <dest-folder-path>`
+        : `opencli alipan move ${fileId} <to-parent-file-id>`;
+      const deleteCmd = canBuildPath
+        ? `opencli alipan delete --path ${quoteShellArg(childPath)} --yes true`
+        : `opencli alipan delete ${fileId} --yes true`;
+
       return {
-        name: item?.name ?? '',
+        name,
         type: item?.type ?? '',
         size: item?.type === 'folder' ? '-' : formatBytes(rawSize),
         updated_at: item?.updated_at ?? '',
-        file_id: item?.file_id ?? '',
+        file_id: fileId,
         parent_file_id: item?.parent_file_id ?? '',
+        ops: showCommands
+          ? `rename: ${renameCmd} | move: ${moveCmd} | delete: ${deleteCmd}`
+          : '-',
       };
     });
   },
