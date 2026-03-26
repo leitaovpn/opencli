@@ -268,9 +268,9 @@ cli({
   navigateBefore: false,
   timeoutSeconds: 300,
   args: [
-    { name: 'share', required: true, positional: true, help: 'AliPan share link or share_id' },
+    { name: 'share', required: true, positional: true, help: 'AliPan share URL or share_id (supports /folder/<id> and /file/<id>)' },
     { name: 'share-pwd', default: '', help: 'Share password / extraction code' },
-    { name: 'source-path', default: '', help: 'Path inside the share to save, e.g. /Movies/demo.mp4' },
+    { name: 'source-path', default: '', help: 'Optional path inside share, e.g. /电影/演示.mp4' },
     { name: 'to-parent-file-id', default: 'root', help: 'Destination parent folder file_id' },
     { name: 'to-path', default: '', help: 'Destination folder path from root (overrides --to-parent-file-id)' },
     { name: 'overwrite', type: 'boolean', default: false, help: 'Overwrite same-name files instead of auto-renaming' },
