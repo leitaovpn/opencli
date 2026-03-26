@@ -3,8 +3,13 @@ import type { IPage } from '../../types.js';
 
 export type AliPanRequest = {
   url: string;
-  body: Record<string, unknown>;
+  body: unknown;
+  method?: string;
+  headers?: Record<string, string>;
   injectDriveId?: boolean;
+  injectAuthToken?: boolean;
+  injectShareToken?: boolean;
+  shareToken?: string;
 };
 
 export type AliPanResolvedNode = {
@@ -40,8 +45,8 @@ function isErrorResult<T>(value: AliPanEvalResult<T>): value is AliPanEvalError 
 }
 
 /**
- * Run one or more AliPan POST requests in browser context.
- * Automatically injects Authorization header from localStorage token.
+ * Run one or more AliPan HTTP requests in browser context.
+ * Automatically injects auth / drive / share headers when requested.
  * Falls back to the next endpoint when a request fails.
  */
 export async function alipanPostWithFallback<T>(
@@ -64,7 +69,10 @@ export async function alipanPostWithFallback<T>(
       const tokenType = token.token_type || 'Bearer';
       const driveId = token.default_drive_id || token.default_sbox_drive_id;
 
-      if (!accessToken || !driveId) {
+      const requiresAuthToken = requests.some((req) => req.injectAuthToken !== false);
+      const requiresDriveId = requests.some((req) => req.injectDriveId !== false);
+
+      if ((requiresAuthToken && !accessToken) || (requiresDriveId && !driveId)) {
         return {
           __error: 'AUTH_REQUIRED',
           message: 'Missing access token or drive id. Please log in to AliPan in Chrome.',
@@ -73,26 +81,52 @@ export async function alipanPostWithFallback<T>(
 
       let lastError = null;
       for (const req of requests) {
-        const payload = { ...(req.body || {}) };
+        const payload = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+          ? { ...(req.body || {}) }
+          : req.body;
+        const injectAuthToken = req.injectAuthToken !== false;
         const injectDriveId = req.injectDriveId !== false;
-        if (injectDriveId && !payload.drive_id) payload.drive_id = driveId;
+        const injectShareToken = req.injectShareToken === true;
+        const shareToken = req.shareToken || '';
+
+        if ((injectAuthToken && !accessToken) || (injectDriveId && !driveId) || (injectShareToken && !shareToken)) {
+          return {
+            __error: 'AUTH_REQUIRED',
+            message: injectShareToken && !shareToken
+              ? 'Missing share token. Please refresh the share link and try again.'
+              : 'Missing access token or drive id. Please log in to AliPan in Chrome.',
+          };
+        }
+
+        if (injectDriveId && payload && typeof payload === 'object' && !Array.isArray(payload) && !payload.drive_id) {
+          payload.drive_id = driveId;
+        }
 
         // Small template support for same-drive move requests.
-        if (injectDriveId) {
+        if (injectDriveId && payload && typeof payload === 'object' && !Array.isArray(payload)) {
           for (const [key, value] of Object.entries(payload)) {
             if (value === '$drive_id') payload[key] = driveId;
           }
         }
 
         try {
+          const method = String(req.method || 'POST').toUpperCase();
+          const headers = {
+            ...(req.headers || {}),
+            'content-type': (req.headers && (req.headers['content-type'] || req.headers['Content-Type'])) || 'application/json',
+          };
+          if (injectAuthToken) {
+            headers.authorization = tokenType + ' ' + accessToken;
+          }
+          if (injectShareToken) {
+            headers['x-share-token'] = shareToken;
+          }
+
           const resp = await fetch(req.url, {
-            method: 'POST',
+            method,
             credentials: 'include',
-            headers: {
-              'content-type': 'application/json',
-              'authorization': tokenType + ' ' + accessToken,
-            },
-            body: JSON.stringify(payload),
+            headers,
+            body: method === 'GET' ? undefined : JSON.stringify(payload ?? {}),
           });
 
           const text = await resp.text();

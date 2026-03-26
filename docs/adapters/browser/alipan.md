@@ -11,6 +11,7 @@
 | `opencli alipan download` | Download file to local disk |
 | `opencli alipan upload <file>` | Upload local file to AliPan |
 | `opencli alipan capacity` | Show total / used / available storage |
+| `opencli alipan save <share-link>` | Save files from a share link to your drive |
 | `opencli alipan rename` | Rename file/folder |
 | `opencli alipan move` | Move file/folder |
 | `opencli alipan delete` | Move file/folder to recycle bin |
@@ -62,6 +63,12 @@ opencli alipan resolve "/电视/H 海贼王"
 
 # Show total / used / available capacity
 opencli alipan capacity
+
+# Save root items from a share link
+opencli alipan save "https://www.alipan.com/s/xxxxxxx"
+
+# Save a specific path from a share link into a target folder
+opencli alipan save "https://www.alipan.com/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
 
 # Upload to root
 opencli alipan upload ./demo.mp4

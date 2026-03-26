@@ -123,7 +123,7 @@ Run `opencli list` for the live registry.
 | **reddit** | `hot` `frontpage` `popular` `search` `subreddit` `read` `user` `user-posts` `user-comments` `upvote` `save` `comment` `subscribe` `saved` `upvoted` | Browser |
 | **cursor** | `status` `send` `read` `new` `dump` `composer` `model` `extract-code` `ask` `screenshot` `history` `export` | Desktop |
 | **bilibili** | `hot` `search` `me` `favorite` `history` `feed` `subtitle` `dynamic` `ranking` `following` `user-videos` `download` | Browser |
-| **alipan** | `list` `resolve` `download` `upload` `capacity` `rename` `move` `delete` | Browser |
+| **alipan** | `list` `resolve` `download` `upload` `capacity` `save` `rename` `move` `delete` | Browser |
 | **codex** | `status` `send` `read` `new` `dump` `extract-diff` `model` `ask` `screenshot` `history` `export` | Desktop |
 | **chatwise** | `status` `new` `send` `read` `ask` `model` `history` `export` `screenshot` | Desktop |
 | **doubao** | `status` `new` `send` `read` `ask` | Browser |
