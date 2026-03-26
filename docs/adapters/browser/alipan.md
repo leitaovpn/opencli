@@ -9,6 +9,7 @@
 | `opencli alipan list` | List files/folders |
 | `opencli alipan resolve <path>` | Resolve path to `file_id` |
 | `opencli alipan download` | Download file to local disk |
+| `opencli alipan upload <file>` | Upload local file to AliPan |
 | `opencli alipan rename` | Rename file/folder |
 | `opencli alipan move` | Move file/folder |
 | `opencli alipan delete` | Move file/folder to recycle bin |
@@ -54,6 +55,15 @@ opencli alipan list --limit 20
 
 # Resolve path
 opencli alipan resolve "/电视/H 海贼王"
+
+# Upload to root
+opencli alipan upload ./demo.mp4
+
+# Upload to a folder path
+opencli alipan upload ./demo.mp4 --to-path "/电视/H 海贼王"
+
+# Upload with explicit remote name and overwrite on conflict
+opencli alipan upload ./cover.jpg --to-path "/素材/封面" --name "cover.jpg" --check-name-mode overwrite
 
 # Download by path
 opencli alipan download --path "/电视/H 海贼王/demo.mp4" --output ~/Downloads/test/ --overwrite
