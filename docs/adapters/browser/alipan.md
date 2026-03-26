@@ -10,6 +10,7 @@
 | `opencli alipan resolve <path>` | Resolve path to `file_id` |
 | `opencli alipan download` | Download file to local disk |
 | `opencli alipan upload <file>` | Upload local file to AliPan |
+| `opencli alipan capacity` | Show total / used / available storage |
 | `opencli alipan rename` | Rename file/folder |
 | `opencli alipan move` | Move file/folder |
 | `opencli alipan delete` | Move file/folder to recycle bin |
@@ -43,6 +44,9 @@ opencli doctor
 # AliPan auth/session
 opencli alipan list --limit 1
 
+# AliPan capacity
+opencli alipan capacity
+
 # yt-dlp runtime (binary or python module)
 yt-dlp --version || python3 -m yt_dlp --version
 ```
@@ -55,6 +59,9 @@ opencli alipan list --limit 20
 
 # Resolve path
 opencli alipan resolve "/电视/H 海贼王"
+
+# Show total / used / available capacity
+opencli alipan capacity
 
 # Upload to root
 opencli alipan upload ./demo.mp4

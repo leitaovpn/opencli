@@ -4,6 +4,7 @@ import type { IPage } from '../../types.js';
 export type AliPanRequest = {
   url: string;
   body: Record<string, unknown>;
+  injectDriveId?: boolean;
 };
 
 export type AliPanResolvedNode = {
@@ -73,11 +74,14 @@ export async function alipanPostWithFallback<T>(
       let lastError = null;
       for (const req of requests) {
         const payload = { ...(req.body || {}) };
-        if (!payload.drive_id) payload.drive_id = driveId;
+        const injectDriveId = req.injectDriveId !== false;
+        if (injectDriveId && !payload.drive_id) payload.drive_id = driveId;
 
         // Small template support for same-drive move requests.
-        for (const [key, value] of Object.entries(payload)) {
-          if (value === '$drive_id') payload[key] = driveId;
+        if (injectDriveId) {
+          for (const [key, value] of Object.entries(payload)) {
+            if (value === '$drive_id') payload[key] = driveId;
+          }
         }
 
         try {
