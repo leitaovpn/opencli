@@ -182,6 +182,32 @@ npm install -g @jackwener/opencli@latest
 | **pixiv** | `ranking` `search` `user` `illusts` `detail` `download` | 浏览器 |
 | **tiktok** | `explore` `search` `profile` `user` `following` `follow` `unfollow` `like` `unlike` `comment` `save` `unsave` `live` `notifications` `friends` | 浏览器 |
 
+### AliPan Save 快速开始
+
+完整说明见 [docs/adapters/browser/alipan.md](./docs/adapters/browser/alipan.md)。
+
+```bash
+opencli alipan save [options] <share>
+```
+
+- `share`: AliPan 分享 URL 或 share_id，支持 `/folder/<id>` 和 `/file/<id>`
+- `--share-pwd`: 分享密码 / 提取码
+- `--source-path`: 分享内可选路径，例如 `/电影/演示.mp4`
+- `--to-parent-file-id`: 目标父目录 `file_id`
+- `--to-path`: 从根目录开始的目标目录路径，会覆盖 `--to-parent-file-id`
+- `--overwrite`: 同名文件覆盖保存，不再自动重命名
+
+```bash
+# 保存分享根目录内容
+opencli alipan save "https://www.alipan.com/s/xxxxxxx"
+
+# 直接保存分享 URL 中深链的文件夹或文件
+opencli alipan save "https://www.alipan.com/s/xxxxxxx/folder/abcdef"
+
+# 保存分享内指定路径到目标目录
+opencli alipan save "https://www.alipan.com/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
+```
+
 
 ### 外部 CLI 枢纽
 

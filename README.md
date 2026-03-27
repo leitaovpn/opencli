@@ -180,6 +180,32 @@ Run `opencli list` for the live registry.
 | **pixiv** | `ranking` `search` `user` `illusts` `detail` `download` | Browser |
 | **tiktok** | `explore` `search` `profile` `user` `following` `follow` `unfollow` `like` `unlike` `comment` `save` `unsave` `live` `notifications` `friends` | Browser |
 
+### AliPan Save Quick Start
+
+See the full guide in [docs/adapters/browser/alipan.md](./docs/adapters/browser/alipan.md).
+
+```bash
+opencli alipan save [options] <share>
+```
+
+- `share`: AliPan share URL or share_id (supports `/folder/<id>` and `/file/<id>`)
+- `--share-pwd`: Share password / extraction code
+- `--source-path`: Optional path inside share, e.g. `/电影/演示.mp4`
+- `--to-parent-file-id`: Destination parent folder `file_id`
+- `--to-path`: Destination folder path from root (overrides `--to-parent-file-id`)
+- `--overwrite`: Overwrite same-name files instead of auto-renaming
+
+```bash
+# Save root items from a share link
+opencli alipan save "https://www.alipan.com/s/xxxxxxx"
+
+# Save a deep-linked folder or file from a share URL
+opencli alipan save "https://www.alipan.com/s/xxxxxxx/folder/abcdef"
+
+# Save a specific path inside the share into a target folder
+opencli alipan save "https://www.alipan.com/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
+```
+
 
 ### External CLI Hub
 

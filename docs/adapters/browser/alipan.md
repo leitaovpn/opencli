@@ -11,7 +11,7 @@
 | `opencli alipan download` | Download file to local disk |
 | `opencli alipan upload <file>` | Upload local file to AliPan |
 | `opencli alipan capacity` | Show total / used / available storage |
-| `opencli alipan save <share-link>` | Save files from a share link to your drive |
+| `opencli alipan save <share>` | Save files from an AliPan share link to your drive |
 | `opencli alipan rename` | Rename file/folder |
 | `opencli alipan move` | Move file/folder |
 | `opencli alipan delete` | Move file/folder to recycle bin |
@@ -52,6 +52,19 @@ opencli alipan capacity
 yt-dlp --version || python3 -m yt_dlp --version
 ```
 
+## Save Command
+
+```bash
+opencli alipan save [options] <share>
+```
+
+- `share`: AliPan share URL or share_id (supports `/folder/<id>` and `/file/<id>`)
+- `--share-pwd`: Share password / extraction code
+- `--source-path`: Optional path inside share, e.g. `/电影/演示.mp4`
+- `--to-parent-file-id`: Destination parent folder `file_id`
+- `--to-path`: Destination folder path from root (overrides `--to-parent-file-id`)
+- `--overwrite`: Overwrite same-name files instead of auto-renaming
+
 ## Usage Examples
 
 ```bash
@@ -67,7 +80,10 @@ opencli alipan capacity
 # Save root items from a share link
 opencli alipan save "https://www.alipan.com/s/xxxxxxx"
 
-# Save a specific path from a share link into a target folder
+# Save a deep-linked folder or file from a share URL
+opencli alipan save "https://www.alipan.com/s/xxxxxxx/folder/abcdef"
+
+# Save a specific path inside the share into a target folder
 opencli alipan save "https://www.alipan.com/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
 
 # Upload to root
