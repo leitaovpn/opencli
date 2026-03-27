@@ -21,6 +21,7 @@ export default defineConfig({
             'src/clis/zhihu/**/*.test.ts',
             'src/clis/v2ex/**/*.test.ts',
             'src/clis/alipan/**/*.test.ts',
+            'src/clis/quark/**/*.test.ts',
           ],
           sequence: { groupOrder: 1 },
         },

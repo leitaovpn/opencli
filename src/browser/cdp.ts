@@ -368,12 +368,16 @@ function scoreCDPTarget(target: CDPTarget, preferredPattern?: RegExp): number {
   else if (type === 'webview') score += 100;
   else if (type === 'page') score += 80;
   else if (type === 'iframe') score += 20;
+  else if (type === 'service_worker') score -= 300;
+  else if (type === 'shared_worker') score -= 280;
+  else if (type === 'worker') score -= 260;
+  else if (type === 'background_page') score -= 200;
 
   if (url.startsWith('http://localhost') || url.startsWith('https://localhost')) score += 90;
   if (url.startsWith('file://')) score += 60;
   if (url.startsWith('http://127.0.0.1') || url.startsWith('https://127.0.0.1')) score += 50;
-  if (url.startsWith('about:blank')) score -= 120;
-  if (url === '' || url === 'about:blank') score -= 40;
+  if (url.startsWith('about:blank')) score += type === 'page' ? 20 : -120;
+  if (url === '') score -= 40;
 
   if (title && title !== 'devtools') score += 25;
   if (title.includes('antigravity')) score += 120;

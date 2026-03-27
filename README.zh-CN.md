@@ -126,6 +126,7 @@ npm install -g @jackwener/opencli@latest
 | **cursor** | `status` `send` `read` `new` `dump` `composer` `model` `extract-code` `ask` `screenshot` `history` `export` | 桌面端 |
 | **bilibili** | `hot` `search` `me` `favorite` `history` `feed` `subtitle` `dynamic` `ranking` `following` `user-videos` `download` | 浏览器 |
 | **alipan** | `list` `resolve` `download` `upload` `capacity` `save` `rename` `move` `delete` | 浏览器 |
+| **quark** | `list` `resolve` `download` `upload` `capacity` `save` `mkdir` `rename` `move` `delete` | 浏览器 |
 | **codex** | `status` `send` `read` `new` `dump` `extract-diff` `model` `ask` `screenshot` `history` `export` | 桌面端 |
 | **chatwise** | `status` `new` `send` `read` `ask` `model` `history` `export` `screenshot` | 桌面端 |
 | **doubao** | `status` `new` `send` `read` `ask` | 浏览器 |
@@ -206,6 +207,45 @@ opencli alipan save "https://www.alipan.com/s/xxxxxxx/folder/abcdef"
 
 # 保存分享内指定路径到目标目录
 opencli alipan save "https://www.alipan.com/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
+```
+
+### Quark 快速开始
+
+完整说明见 [docs/adapters/browser/quark.md](./docs/adapters/browser/quark.md)。
+
+```bash
+opencli quark save [options] <share>
+```
+
+- `share`: Quark 分享 URL 或 `pwd_id`
+- `--share-pwd`: 分享密码 / 提取码
+- `--source-path`: 分享内可选路径，例如 `/电影/演示.mp4`
+- `--to-parent-file-id`: 目标父目录 `file_id`
+- `--to-path`: 从根目录开始的目标目录路径，会覆盖 `--to-parent-file-id`
+- `--overwrite`: 转存前把同名目标移入回收站
+
+```bash
+opencli quark mkdir [options] <path>
+```
+
+- `path`: 从根目录开始的文件夹路径，例如 `/Movies/2026`
+- `--parents`: 按需创建缺失的父目录
+
+```bash
+# 保存分享根目录内容
+opencli quark save "https://pan.quark.cn/s/xxxxxxx"
+
+# 保存分享内指定路径到目标目录
+opencli quark save "https://pan.quark.cn/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
+
+# 创建文件夹
+opencli quark mkdir "/电影"
+
+# 递归创建多级目录
+opencli quark mkdir "/电影/2026/科幻" --parents true
+
+# 上传本地文件
+opencli quark upload ./demo.mp4 --to-path "/电影/演示片"
 ```
 
 

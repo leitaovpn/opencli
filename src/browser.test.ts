@@ -90,6 +90,25 @@ describe('browser helpers', () => {
 
     expect(target?.webSocketDebuggerUrl).toBe('ws://127.0.0.1:9226/codex');
   });
+
+  it('prefers a page target over extension service workers when no preferred target is set', () => {
+    const target = __test__.selectCDPTarget([
+      {
+        type: 'page',
+        title: '',
+        url: 'about:blank',
+        webSocketDebuggerUrl: 'ws://127.0.0.1:9227/page',
+      },
+      {
+        type: 'service_worker',
+        title: 'background.js',
+        url: 'chrome-extension://abcdefghijklmnop/background.js',
+        webSocketDebuggerUrl: 'ws://127.0.0.1:9227/worker',
+      },
+    ]);
+
+    expect(target?.webSocketDebuggerUrl).toBe('ws://127.0.0.1:9227/page');
+  });
 });
 
 describe('BrowserBridge state', () => {

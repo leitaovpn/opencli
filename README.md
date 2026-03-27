@@ -124,6 +124,7 @@ Run `opencli list` for the live registry.
 | **cursor** | `status` `send` `read` `new` `dump` `composer` `model` `extract-code` `ask` `screenshot` `history` `export` | Desktop |
 | **bilibili** | `hot` `search` `me` `favorite` `history` `feed` `subtitle` `dynamic` `ranking` `following` `user-videos` `download` | Browser |
 | **alipan** | `list` `resolve` `download` `upload` `capacity` `save` `rename` `move` `delete` | Browser |
+| **quark** | `list` `resolve` `download` `upload` `capacity` `save` `mkdir` `rename` `move` `delete` | Browser |
 | **codex** | `status` `send` `read` `new` `dump` `extract-diff` `model` `ask` `screenshot` `history` `export` | Desktop |
 | **chatwise** | `status` `new` `send` `read` `ask` `model` `history` `export` `screenshot` | Desktop |
 | **doubao** | `status` `new` `send` `read` `ask` | Browser |
@@ -204,6 +205,45 @@ opencli alipan save "https://www.alipan.com/s/xxxxxxx/folder/abcdef"
 
 # Save a specific path inside the share into a target folder
 opencli alipan save "https://www.alipan.com/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
+```
+
+### Quark Quick Start
+
+See the full guide in [docs/adapters/browser/quark.md](./docs/adapters/browser/quark.md).
+
+```bash
+opencli quark save [options] <share>
+```
+
+- `share`: Quark share URL or `pwd_id`
+- `--share-pwd`: Share password / extraction code
+- `--source-path`: Optional path inside share, e.g. `/电影/演示.mp4`
+- `--to-parent-file-id`: Destination parent folder `file_id`
+- `--to-path`: Destination folder path from root (overrides `--to-parent-file-id`)
+- `--overwrite`: Recycle same-name targets before saving
+
+```bash
+opencli quark mkdir [options] <path>
+```
+
+- `path`: Folder path from root, e.g. `/Movies/2026`
+- `--parents`: Create missing parent folders as needed
+
+```bash
+# Save root items from a share link
+opencli quark save "https://pan.quark.cn/s/xxxxxxx"
+
+# Save a specific path inside the share into a target folder
+opencli quark save "https://pan.quark.cn/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
+
+# Create a folder
+opencli quark mkdir "/Movies"
+
+# Create nested folders recursively
+opencli quark mkdir "/Movies/2026/Sci-Fi" --parents true
+
+# Upload a local file
+opencli quark upload ./demo.mp4 --to-path "/电影/演示片"
 ```
 
 

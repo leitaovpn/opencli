@@ -10,6 +10,7 @@ Run `opencli list` for the live registry.
 | **[reddit](/adapters/browser/reddit)** | `hot` `frontpage` `popular` `search` `subreddit` `read` `user` `user-posts` `user-comments` `upvote` `save` `comment` `subscribe` `saved` `upvoted` | 🔐 Browser |
 | **[bilibili](/adapters/browser/bilibili)** | `hot` `search` `me` `favorite` `history` `feed` `subtitle` `dynamic` `ranking` `following` `user-videos` `download` | 🔐 Browser |
 | **[alipan](/adapters/browser/alipan)** | `list` `resolve` `download` `upload` `capacity` `save` `rename` `move` `delete` | 🔐 Browser |
+| **[quark](/adapters/browser/quark)** | `list` `resolve` `download` `upload` `capacity` `save` `mkdir` `rename` `move` `delete` | 🔐 Browser |
 | **[zhihu](/adapters/browser/zhihu)** | `hot` `search` `question` `download` | 🔐 Browser |
 | **[xiaohongshu](/adapters/browser/xiaohongshu)** | `search` `notifications` `feed` `user` `download` `publish` `creator-notes` `creator-note-detail` `creator-notes-summary` `creator-profile` `creator-stats` | 🔐 Browser |
 | **[xueqiu](/adapters/browser/xueqiu)** | `feed` `hot-stock` `hot` `search` `stock` `watchlist` `earnings-date` `fund-holdings` `fund-snapshot` | 🔐 Browser |
