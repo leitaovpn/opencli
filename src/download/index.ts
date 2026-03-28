@@ -170,7 +170,7 @@ export async function httpDownload(
         return;
       }
 
-      if (response.statusCode !== 200) {
+      if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
         file.close();
         if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
         resolve({ success: false, size: 0, error: `HTTP ${response.statusCode}` });

@@ -89,6 +89,8 @@ cli({
       parentFileId,
       limit,
       sort: buildQuarkSort(orderBy, orderDirection),
+      consistencyRetries: pathArg ? 3 : 0,
+      consistencyDelayMs: 700,
     });
 
     return items

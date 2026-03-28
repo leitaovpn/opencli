@@ -124,6 +124,10 @@ function dedupeCookies(cookies: BrowserCookie[]): BrowserCookie[] {
   return result;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function normalizeQuarkParentFileId(value: string): string {
   const normalized = String(value ?? '').trim();
   if (!normalized || normalized === 'root') return QUARK_ROOT_FID;
@@ -409,38 +413,64 @@ export async function quarkListDirectoryAll(
     parentFileId: string;
     limit?: number;
     sort?: string[];
+    consistencyRetries?: number;
+    consistencyDelayMs?: number;
   },
 ): Promise<QuarkFileItem[]> {
   const limit = Number.isFinite(options.limit) ? Math.max(1, Number(options.limit)) : Number.POSITIVE_INFINITY;
-  const items: QuarkFileItem[] = [];
-  let pageNo = 1;
+  const consistencyRetries = Math.max(0, Number(options.consistencyRetries ?? 0));
+  const consistencyDelayMs = Math.max(0, Number(options.consistencyDelayMs ?? 700));
 
-  while (items.length < limit) {
-    const pageItems = await quarkListDirectoryPage(page, {
-      parentFileId: options.parentFileId,
-      pageNo,
-      pageSize: Math.min(QUARK_PAGE_SIZE, limit === Number.POSITIVE_INFINITY ? QUARK_PAGE_SIZE : limit - items.length),
-      sort: options.sort,
-    });
+  for (let attempt = 0; attempt <= consistencyRetries; attempt += 1) {
+    const items: QuarkFileItem[] = [];
+    let pageNo = 1;
 
-    items.push(...pageItems);
-    if (pageItems.length < QUARK_PAGE_SIZE) break;
-    pageNo += 1;
+    while (items.length < limit) {
+      const pageItems = await quarkListDirectoryPage(page, {
+        parentFileId: options.parentFileId,
+        pageNo,
+        pageSize: Math.min(QUARK_PAGE_SIZE, limit === Number.POSITIVE_INFINITY ? QUARK_PAGE_SIZE : limit - items.length),
+        sort: options.sort,
+      });
+
+      items.push(...pageItems);
+      if (pageItems.length < QUARK_PAGE_SIZE) break;
+      pageNo += 1;
+    }
+
+    if (items.length > 0 || attempt >= consistencyRetries) {
+      return items.slice(0, limit);
+    }
+
+    await sleep(consistencyDelayMs);
   }
 
-  return items.slice(0, limit);
+  return [];
 }
 
 export async function quarkFindChildByName(
   page: IPage | null,
   parentFileId: string,
   childName: string,
+  options?: {
+    retryAttempts?: number;
+    retryDelayMs?: number;
+  },
 ): Promise<QuarkFileItem | null> {
-  const items = await quarkListDirectoryAll(page, {
-    parentFileId,
-    sort: ['file_type:asc', 'file_name:asc'],
-  });
-  return items.find(item => String(item.file_name ?? '') === childName) ?? null;
+  const retryAttempts = Math.max(0, Number(options?.retryAttempts ?? 0));
+  const retryDelayMs = Math.max(0, Number(options?.retryDelayMs ?? 700));
+
+  for (let attempt = 0; attempt <= retryAttempts; attempt += 1) {
+    const items = await quarkListDirectoryAll(page, {
+      parentFileId,
+      sort: ['file_type:asc', 'file_name:asc'],
+    });
+    const matched = items.find(item => String(item.file_name ?? '') === childName) ?? null;
+    if (matched || attempt >= retryAttempts) return matched;
+    await sleep(retryDelayMs);
+  }
+
+  return null;
 }
 
 export async function quarkCreateFolder(
@@ -468,8 +498,14 @@ export async function quarkCreateFolder(
 
   const createdFileId = String(result.data?.fid ?? '').trim();
   const item = createdFileId
-    ? await quarkGetFileInfo(page, createdFileId).catch(async () => quarkFindChildByName(page, parentFileId, folderName))
-    : await quarkFindChildByName(page, parentFileId, folderName);
+    ? await quarkGetFileInfo(page, createdFileId).catch(async () => quarkFindChildByName(page, parentFileId, folderName, {
+      retryAttempts: 3,
+      retryDelayMs: 700,
+    }))
+    : await quarkFindChildByName(page, parentFileId, folderName, {
+      retryAttempts: 3,
+      retryDelayMs: 700,
+    });
 
   if (!item?.fid) {
     throw new CommandExecutionError(`Quark mkdir created "${folderName}" but it could not be resolved afterwards`);
@@ -529,7 +565,10 @@ export async function quarkResolvePath(
   let currentPath = '/';
 
   for (const segment of segments) {
-    current = await quarkFindChildByName(page, parentFileId, segment);
+    current = await quarkFindChildByName(page, parentFileId, segment, {
+      retryAttempts: 3,
+      retryDelayMs: 700,
+    });
     if (!current?.fid) {
       throw new CommandExecutionError(`Quark path not found: ${normalizedPath}`);
     }

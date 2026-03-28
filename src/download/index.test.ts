@@ -114,4 +114,20 @@ describe('download helpers', { retry: process.platform === 'win32' ? 2 : 0 }, ()
     expect(forwardedCookie).toBeUndefined();
     expect(fs.readFileSync(destPath, 'utf8')).toBe('ok');
   });
+
+  it('treats 206 partial content responses as successful downloads', async () => {
+    const baseUrl = await startServer((_req, res) => {
+      res.statusCode = 206;
+      res.setHeader('Content-Length', '7');
+      res.end('partial');
+    });
+
+    const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'opencli-dl-'));
+    tempDirs.push(tempDir);
+    const destPath = path.join(tempDir, 'partial.txt');
+    const result = await httpDownload(`${baseUrl}/partial`, destPath);
+
+    expect(result).toEqual({ success: true, size: 7 });
+    expect(fs.readFileSync(destPath, 'utf8')).toBe('partial');
+  });
 });
