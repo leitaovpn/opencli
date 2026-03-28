@@ -170,7 +170,7 @@ export async function httpDownload(
         return;
       }
 
-      if (response.statusCode !== 200) {
+      if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
         file.close();
         if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
         resolve({ success: false, size: 0, error: `HTTP ${response.statusCode}` });
@@ -189,9 +189,26 @@ export async function httpDownload(
 
       file.on('finish', () => {
         file.close();
+        if (!response.complete) {
+          if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+          resolve({ success: false, size: 0, error: 'Incomplete response body' });
+          return;
+        }
+        if (totalSize > 0 && received !== totalSize) {
+          if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+          resolve({ success: false, size: 0, error: `Size mismatch: expected ${totalSize} bytes, got ${received} bytes` });
+          return;
+        }
         // Rename temp file to final destination
         fs.renameSync(tempPath, destPath);
-        resolve({ success: true, size: received });
+        const stats = fs.statSync(destPath);
+        resolve({ success: true, size: stats.size });
+      });
+
+      file.on('error', (err) => {
+        file.close();
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        resolve({ success: false, size: 0, error: err.message });
       });
     });
 

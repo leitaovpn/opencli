@@ -4,6 +4,8 @@
 
 import chalk from 'chalk';
 
+const MIN_PROGRESS_RENDER_INTERVAL_MS = 125;
+
 export interface ProgressBar {
   update(current: number, total: number, label?: string): void;
   complete(success: boolean, message?: string): void;
@@ -39,14 +41,31 @@ export function formatDuration(ms: number): string {
 export function createProgressBar(filename: string, index: number, total: number): ProgressBar {
   const prefix = chalk.dim(`[${index + 1}/${total}]`);
   const truncatedName = filename.length > 40 ? filename.slice(0, 37) + '...' : filename;
+  let lastRenderAt = 0;
+  let lastPercent = -1;
+  let lastTotalBytes = -1;
+  let lastLabel = '';
 
   return {
     update(current: number, totalBytes: number, label?: string) {
       const percent = totalBytes > 0 ? Math.round((current / totalBytes) * 100) : 0;
+      const normalizedLabel = label ?? '';
+      const now = Date.now();
+      const forceRender = (totalBytes > 0 && current >= totalBytes)
+        || normalizedLabel !== lastLabel
+        || totalBytes !== lastTotalBytes;
+      if (!forceRender && percent === lastPercent && now - lastRenderAt < MIN_PROGRESS_RENDER_INTERVAL_MS) {
+        return;
+      }
+
       const bar = createBar(percent);
       const size = totalBytes > 0 ? formatBytes(totalBytes) : '';
-      const extra = label ? ` ${label}` : '';
+      const extra = normalizedLabel ? ` ${normalizedLabel}` : '';
       process.stderr.write(`\r${prefix} ${truncatedName} ${bar} ${percent}% ${size}${extra}`);
+      lastRenderAt = now;
+      lastPercent = percent;
+      lastTotalBytes = totalBytes;
+      lastLabel = normalizedLabel;
     },
     complete(success: boolean, message?: string) {
       const icon = success ? chalk.green('✓') : chalk.red('✗');
