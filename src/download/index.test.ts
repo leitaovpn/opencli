@@ -117,9 +117,10 @@ describe('download helpers', { retry: process.platform === 'win32' ? 2 : 0 }, ()
 
   it('treats 206 partial content responses as successful downloads', async () => {
     const baseUrl = await startServer((_req, res) => {
+      const body = Buffer.from('chunked');
       res.statusCode = 206;
-      res.setHeader('Content-Length', '7');
-      res.end('partial');
+      res.setHeader('Content-Length', String(body.length));
+      res.end(body);
     });
 
     const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'opencli-dl-'));
@@ -128,6 +129,6 @@ describe('download helpers', { retry: process.platform === 'win32' ? 2 : 0 }, ()
     const result = await httpDownload(`${baseUrl}/partial`, destPath);
 
     expect(result).toEqual({ success: true, size: 7 });
-    expect(fs.readFileSync(destPath, 'utf8')).toBe('partial');
+    expect(fs.readFileSync(destPath, 'utf8')).toBe('chunked');
   });
 });

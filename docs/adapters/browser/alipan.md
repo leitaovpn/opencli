@@ -12,6 +12,7 @@
 | `opencli alipan upload <file>` | Upload local file to AliPan |
 | `opencli alipan capacity` | Show total / used / available storage |
 | `opencli alipan save <share>` | Save files from an AliPan share link to your drive |
+| `opencli alipan mkdir <path>` | Create a folder in AliPan |
 | `opencli alipan rename` | Rename file/folder |
 | `opencli alipan move` | Move file/folder |
 | `opencli alipan delete` | Move file/folder to recycle bin |
@@ -65,6 +66,15 @@ opencli alipan save [options] <share>
 - `--to-path`: Destination folder path from root (overrides `--to-parent-file-id`)
 - `--overwrite`: Overwrite same-name files instead of auto-renaming
 
+## Mkdir Command
+
+```bash
+opencli alipan mkdir [options] <path>
+```
+
+- `path`: Folder path from root, e.g. `/Movies/2026`
+- `--parents`: Create missing parent folders as needed
+
 ## Usage Examples
 
 ```bash
@@ -85,6 +95,12 @@ opencli alipan save "https://www.alipan.com/s/xxxxxxx/folder/abcdef"
 
 # Save a specific path inside the share into a target folder
 opencli alipan save "https://www.alipan.com/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
+
+# Create a folder in root
+opencli alipan mkdir "/电影"
+
+# Create nested folders recursively
+opencli alipan mkdir "/电影/2026/科幻" --parents true
 
 # Upload to root
 opencli alipan upload ./demo.mp4

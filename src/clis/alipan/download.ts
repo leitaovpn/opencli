@@ -4,6 +4,7 @@ import { formatCookieHeader, httpDownload, sanitizeFilename, ytdlpDownload } fro
 import { createProgressBar, formatBytes } from '../../download/progress.js';
 import { CommandExecutionError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
+import { getAliPanSizeMismatchError, listAliPanDownloadUrls } from './download-shared.js';
 import { alipanPostWithFallback, alipanResolvePath } from './utils.js';
 
 type AliPanFileDetail = {
@@ -40,17 +41,6 @@ type AliPanVideoPreviewResponse = {
   };
 };
 
-function listDownloadUrls(payload: AliPanDownloadUrlResponse | null | undefined): string[] {
-  const candidates = [payload?.url, payload?.internal_url, payload?.cdn_url, payload?.download_url];
-  const unique = new Set<string>();
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
-      unique.add(candidate.trim());
-    }
-  }
-  return [...unique];
-}
-
 function listVideoPreviewUrls(payload: AliPanVideoPreviewResponse | null | undefined): string[] {
   const taskList = payload?.video_preview_play_info?.live_transcoding_task_list;
   const tasks = Array.isArray(taskList) ? taskList : [];
@@ -70,6 +60,30 @@ function maskUrl(rawUrl: string): string {
     return `${parsed.origin}${parsed.pathname}`;
   } catch {
     return '(invalid-url)';
+  }
+}
+
+function removeDownloadArtifacts(savePath: string): void {
+  try {
+    if (fs.existsSync(savePath)) fs.unlinkSync(savePath);
+  } catch {
+    // Best-effort cleanup after failed/incomplete downloads.
+  }
+
+  const dir = path.dirname(savePath);
+  const baseName = path.basename(savePath, path.extname(savePath));
+  try {
+    for (const entry of fs.readdirSync(dir)) {
+      if (!entry.startsWith(baseName)) continue;
+      const target = path.join(dir, entry);
+      try {
+        if (fs.statSync(target).isFile()) fs.unlinkSync(target);
+      } catch {
+        // Ignore cleanup races and continue.
+      }
+    }
+  } catch {
+    // Ignore missing directories or transient fs errors.
   }
 }
 
@@ -161,12 +175,7 @@ cli({
       throw new CommandExecutionError(`AliPan returned unsupported download method: ${method}`);
     }
 
-    const downloadUrls = [
-      ...new Set<string>([
-        ...listDownloadUrls(urlResult.data),
-        ...listDownloadUrls(detail),
-      ]),
-    ];
+    const downloadUrls = listAliPanDownloadUrls(urlResult.data, detail);
 
     const allCookies = [
       ...(await page.getCookies({ domain: 'alipan.com' })),
@@ -184,6 +193,7 @@ cli({
     let usedEndpoint = urlResult.endpoint;
     const errors: string[] = [];
     const progressBar = showProgress ? createProgressBar(safeName, 0, 1) : null;
+    const expectedSize = typeof detail.size === 'number' ? detail.size : undefined;
 
     if (downloadUrls.length > 0) {
       const attempts: Array<{ url: string; cookies?: string }> = [];
@@ -205,8 +215,15 @@ cli({
           },
         });
         if (result.success) {
-          downloaded = result;
-          break;
+          const sizeMismatch = getAliPanSizeMismatchError(expectedSize, result.size);
+          if (!sizeMismatch) {
+            downloaded = result;
+            break;
+          }
+
+          removeDownloadArtifacts(savePath);
+          errors.push(`${uMasked}${attempt.cookies ? ' (with cookies)' : ''} -> ${sizeMismatch}`);
+          continue;
         }
         errors.push(`${uMasked}${attempt.cookies ? ' (with cookies)' : ''} -> ${result.error ?? 'unknown error'}`);
       }
@@ -255,7 +272,13 @@ cli({
           },
         });
         if (ytdlpResult.success) {
-          downloaded = ytdlpResult;
+          const sizeMismatch = getAliPanSizeMismatchError(expectedSize, ytdlpResult.size);
+          if (!sizeMismatch) {
+            downloaded = ytdlpResult;
+          } else {
+            removeDownloadArtifacts(savePath);
+            errors.push(`Preview stream download failed: ${sizeMismatch}`);
+          }
         } else {
           errors.push(`Preview stream download failed: ${ytdlpResult.error ?? 'unknown error'}`);
         }
