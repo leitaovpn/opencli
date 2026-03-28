@@ -123,7 +123,7 @@ Run `opencli list` for the live registry.
 | **reddit** | `hot` `frontpage` `popular` `search` `subreddit` `read` `user` `user-posts` `user-comments` `upvote` `save` `comment` `subscribe` `saved` `upvoted` | Browser |
 | **cursor** | `status` `send` `read` `new` `dump` `composer` `model` `extract-code` `ask` `screenshot` `history` `export` | Desktop |
 | **bilibili** | `hot` `search` `me` `favorite` `history` `feed` `subtitle` `dynamic` `ranking` `following` `user-videos` `download` | Browser |
-| **alipan** | `list` `resolve` `download` `upload` `capacity` `save` `rename` `move` `delete` | Browser |
+| **alipan** | `list` `resolve` `download` `upload` `capacity` `save` `mkdir` `rename` `move` `delete` | Browser |
 | **codex** | `status` `send` `read` `new` `dump` `extract-diff` `model` `ask` `screenshot` `history` `export` | Desktop |
 | **chatwise** | `status` `new` `send` `read` `ask` `model` `history` `export` `screenshot` | Desktop |
 | **doubao** | `status` `new` `send` `read` `ask` | Browser |
@@ -204,6 +204,12 @@ opencli alipan save "https://www.alipan.com/s/xxxxxxx/folder/abcdef"
 
 # Save a specific path inside the share into a target folder
 opencli alipan save "https://www.alipan.com/s/xxxxxxx" --share-pwd abcd --source-path "/电影/演示.mp4" --to-path "/转存"
+
+# Create a folder in root
+opencli alipan mkdir "/电影"
+
+# Create nested folders recursively
+opencli alipan mkdir "/电影/2026/科幻" --parents true
 ```
 
 

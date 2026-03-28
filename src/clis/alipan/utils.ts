@@ -23,6 +23,16 @@ export type AliPanResolvedNode = {
   created_at: string;
 };
 
+export type AliPanFileItem = {
+  file_id?: string;
+  parent_file_id?: string;
+  name?: string;
+  type?: string;
+  size?: number;
+  updated_at?: string;
+  created_at?: string;
+};
+
 type AliPanEvalSuccess<T> = {
   ok: true;
   data: T;
@@ -39,6 +49,21 @@ type AliPanEvalError = {
 };
 
 type AliPanEvalResult<T> = AliPanEvalSuccess<T> | AliPanEvalError;
+
+type AliPanListResponse = {
+  items?: AliPanFileItem[];
+  next_marker?: string;
+};
+
+type AliPanCreateFolderResponse = {
+  file_id?: string;
+  parent_file_id?: string;
+  name?: string;
+  type?: string;
+  size?: number;
+  updated_at?: string;
+  created_at?: string;
+};
 
 function isErrorResult<T>(value: AliPanEvalResult<T>): value is AliPanEvalError {
   return '__error' in value;
@@ -194,6 +219,133 @@ type AliPanResolveEvalError = {
 
 function isResolveError(value: AliPanResolvedNode | AliPanResolveEvalError): value is AliPanResolveEvalError {
   return '__error' in value;
+}
+
+function mapAliPanItemToResolvedNode(item: AliPanFileItem, resolvedPath: string): AliPanResolvedNode {
+  return {
+    path: resolvedPath,
+    name: String(item.name ?? ''),
+    type: String(item.type ?? ''),
+    file_id: String(item.file_id ?? ''),
+    parent_file_id: String(item.parent_file_id ?? ''),
+    size: Number(item.size ?? 0),
+    updated_at: String(item.updated_at ?? ''),
+    created_at: String(item.created_at ?? ''),
+  };
+}
+
+export async function alipanListAll(
+  page: IPage | null,
+  options: {
+    parentFileId: string;
+    orderBy?: 'updated_at' | 'created_at' | 'name' | 'size';
+    orderDirection?: 'ASC' | 'DESC';
+    limit?: number;
+  },
+): Promise<AliPanFileItem[]> {
+  const parentFileId = String(options.parentFileId ?? 'root').trim() || 'root';
+  const orderBy = options.orderBy ?? 'name';
+  const orderDirection = options.orderDirection ?? 'ASC';
+  const limit = Number.isFinite(options.limit) ? Math.max(1, Number(options.limit)) : Number.POSITIVE_INFINITY;
+  const items: AliPanFileItem[] = [];
+  let marker = '';
+
+  while (items.length < limit) {
+    const pageSize = limit === Number.POSITIVE_INFINITY
+      ? 200
+      : Math.max(1, Math.min(200, limit - items.length));
+
+    const result = await alipanPostWithFallback<AliPanListResponse>(page, [
+      {
+        url: 'https://api.aliyundrive.com/adrive/v3/file/list',
+        body: {
+          parent_file_id: parentFileId,
+          limit: pageSize,
+          all: false,
+          order_by: orderBy,
+          order_direction: orderDirection,
+          marker,
+        },
+      },
+    ]);
+
+    const pageItems = Array.isArray(result.data?.items) ? result.data.items : [];
+    items.push(...pageItems);
+    marker = String(result.data?.next_marker ?? '').trim();
+    if (!marker) break;
+  }
+
+  return items.slice(0, limit);
+}
+
+export async function alipanFindChildByName(
+  page: IPage | null,
+  parentFileId: string,
+  childName: string,
+): Promise<AliPanFileItem | null> {
+  const normalizedChildName = String(childName ?? '').trim();
+  if (!normalizedChildName) return null;
+
+  const items = await alipanListAll(page, {
+    parentFileId,
+    orderBy: 'name',
+    orderDirection: 'ASC',
+  });
+
+  return items.find(item => String(item.name ?? '') === normalizedChildName) ?? null;
+}
+
+export async function alipanCreateFolder(
+  page: IPage | null,
+  options: {
+    parentFileId: string;
+    folderName: string;
+    resolvedPath?: string;
+  },
+): Promise<AliPanResolvedNode & { endpoint: string }> {
+  const parentFileId = String(options.parentFileId ?? 'root').trim() || 'root';
+  const folderName = String(options.folderName ?? '').trim();
+  if (!folderName) throw new CommandExecutionError('Missing AliPan folder name');
+
+  const result = await alipanPostWithFallback<AliPanCreateFolderResponse>(page, [
+    {
+      url: 'https://api.aliyundrive.com/adrive/v2/file/createWithFolders',
+      body: {
+        parent_file_id: parentFileId,
+        name: folderName,
+        type: 'folder',
+        check_name_mode: 'refuse',
+      },
+    },
+  ]);
+
+  const createdItem: AliPanFileItem = {
+    file_id: result.data?.file_id,
+    parent_file_id: result.data?.parent_file_id ?? parentFileId,
+    name: result.data?.name ?? folderName,
+    type: result.data?.type ?? 'folder',
+    size: result.data?.size ?? 0,
+    updated_at: result.data?.updated_at ?? '',
+    created_at: result.data?.created_at ?? '',
+  };
+
+  let resolvedItem = createdItem;
+  if (!resolvedItem.file_id) {
+    const found = await alipanFindChildByName(page, parentFileId, folderName);
+    if (!found?.file_id) {
+      throw new CommandExecutionError(`AliPan mkdir created "${folderName}" but it could not be resolved afterwards`);
+    }
+    resolvedItem = found;
+  }
+
+  if (String(resolvedItem.type ?? 'folder') !== 'folder') {
+    throw new CommandExecutionError(`AliPan mkdir returned a non-folder target for "${folderName}"`);
+  }
+
+  return {
+    ...mapAliPanItemToResolvedNode(resolvedItem, options.resolvedPath ?? ''),
+    endpoint: result.endpoint,
+  };
 }
 
 /**
