@@ -1,6 +1,6 @@
 import { CommandExecutionError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
-import { QUARK_DRIVE_ORIGIN, QUARK_WEB_ORIGIN, quarkRequestWithFallback, quarkResolvePath } from './utils.js';
+import { QUARK_DRIVE_ORIGIN, QUARK_WEB_ORIGIN, formatQuarkTimestamp, quarkRequestWithFallback, quarkResolvePath } from './utils.js';
 
 type RenameResponse = {
   fid?: string;
@@ -57,9 +57,8 @@ cli({
       file_id: result.data?.fid ?? fileId,
       path: pathArg || '',
       name: result.data?.file_name ?? newName,
-      updated_at: result.data?.updated_at ?? '',
+      updated_at: formatQuarkTimestamp(result.data?.updated_at),
       endpoint: result.endpoint,
     }];
   },
 });
-

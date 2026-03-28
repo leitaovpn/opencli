@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { httpDownload, sanitizeFilename } from '../../download/index.js';
 import { createProgressBar } from '../../download/progress.js';
-import { CommandExecutionError } from '../../errors.js';
+import { CommandExecutionError, getErrorMessage } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
 import {
   QUARK_DRIVE_ORIGIN,
@@ -180,24 +180,46 @@ cli({
     const downloadUrlResult = directUrl
       ? { downloadUrl: directUrl, endpoint: directInfo.endpoint }
       : await requestTaskDownloadUrl(page, fileId);
-    const cookieHeader = await collectQuarkCookieHeader(page);
+
+    let cookieHeader = '';
+    let cookieWarning = '';
+    try {
+      cookieHeader = await collectQuarkCookieHeader(page);
+    } catch (error) {
+      cookieWarning = getErrorMessage(error);
+    }
 
     const progressBar = showProgress ? createProgressBar(safeName, 0, 1) : null;
-    const downloadResult = await httpDownload(downloadUrlResult.downloadUrl, savePath, {
-      cookies: cookieHeader,
-      timeout,
-      headers: {
-        Referer: `${QUARK_WEB_ORIGIN}/`,
-        Origin: QUARK_WEB_ORIGIN,
-      },
-      onProgress: (received, total) => {
-        progressBar?.update(received, total);
-      },
-    });
+    const attempts = [
+      { label: 'signed-url', cookies: '' },
+      ...(cookieHeader ? [{ label: 'signed-url+cookies', cookies: cookieHeader }] : []),
+    ];
 
-    if (!downloadResult.success) {
+    let downloadResult: Awaited<ReturnType<typeof httpDownload>> | null = null;
+    const downloadErrors: string[] = [];
+    for (const attempt of attempts) {
+      const result = await httpDownload(downloadUrlResult.downloadUrl, savePath, {
+        cookies: attempt.cookies || undefined,
+        timeout,
+        headers: {
+          Referer: `${QUARK_WEB_ORIGIN}/`,
+          Origin: QUARK_WEB_ORIGIN,
+        },
+        onProgress: (received, total) => {
+          progressBar?.update(received, total);
+        },
+      });
+      if (result.success) {
+        downloadResult = result;
+        break;
+      }
+      downloadErrors.push(`${attempt.label}: ${result.error ?? 'unknown error'}`);
+    }
+
+    if (!downloadResult?.success) {
       const masked = maskUrl(downloadUrlResult.downloadUrl);
-      throw new CommandExecutionError(`Quark download failed: ${masked} -> ${downloadResult.error ?? 'unknown error'}`);
+      const suffix = cookieWarning ? ` | cookie fallback unavailable: ${cookieWarning}` : '';
+      throw new CommandExecutionError(`Quark download failed: ${masked} -> ${downloadErrors.join(' | ') || 'unknown error'}${suffix}`);
     }
 
     progressBar?.complete(true);

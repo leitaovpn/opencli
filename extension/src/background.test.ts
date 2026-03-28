@@ -84,6 +84,7 @@ function createChromeMock() {
     runtime: {
       onInstalled: { addListener: vi.fn() } as Listener<() => void>,
       onStartup: { addListener: vi.fn() } as Listener<() => void>,
+      onMessage: { addListener: vi.fn() } as Listener<(msg: unknown, sender: unknown, sendResponse: (response?: unknown) => void) => void>,
     },
     cookies: {
       getAll: vi.fn(async () => []),

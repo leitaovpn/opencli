@@ -1,5 +1,5 @@
 import { formatCookieHeader } from '../../download/index.js';
-import { AuthRequiredError, CommandExecutionError, getErrorMessage } from '../../errors.js';
+import { AuthRequiredError, CommandExecutionError } from '../../errors.js';
 import type { BrowserCookie, IPage } from '../../types.js';
 
 export const QUARK_WEB_ORIGIN = 'https://pan.quark.cn';
@@ -50,16 +50,6 @@ export type QuarkResolvedNode = {
   format_type: string;
 };
 
-type QuarkResponseEnvelope<T> = {
-  code?: number | string;
-  success?: boolean;
-  status?: number;
-  message?: string;
-  msg?: string;
-  data?: T;
-  metadata?: Record<string, unknown>;
-};
-
 type QuarkRequestResult<T> = {
   data: T;
   raw: unknown;
@@ -68,49 +58,31 @@ type QuarkRequestResult<T> = {
   status: number;
 };
 
+type QuarkEvalSuccess<T> = {
+  ok: true;
+  data: T;
+  raw: unknown;
+  metadata: Record<string, unknown>;
+  endpoint: string;
+  status: number;
+};
+
+type QuarkEvalError = {
+  __error: 'AUTH_REQUIRED' | 'API_ERROR';
+  status?: number;
+  endpoint?: string;
+  message?: string;
+  body?: unknown;
+};
+
+type QuarkEvalResult<T> = QuarkEvalSuccess<T> | QuarkEvalError;
+
 type QuarkListResponse = {
   list?: QuarkFileItem[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function getMessage(value: unknown): string {
-  if (!isRecord(value)) return '';
-  const message = value.message ?? value.msg ?? value.error_message ?? value.error;
-  return typeof message === 'string' ? message.trim() : '';
-}
-
-function isSuccessEnvelope(body: unknown): boolean {
-  if (!isRecord(body)) return true;
-  if ('success' in body) return body.success === true;
-  if ('code' in body) {
-    return body.code === 0 || body.code === '0' || body.code === 'OK';
-  }
-  return true;
-}
-
-function extractEnvelopeData<T>(body: unknown): { data: T; metadata: Record<string, unknown> } {
-  if (isRecord(body) && ('data' in body || 'metadata' in body)) {
-    const data = ('data' in body ? body.data : body) as T;
-    const metadata = isRecord(body.metadata) ? body.metadata : {};
-    return { data, metadata };
-  }
-  return { data: body as T, metadata: {} };
-}
-
-function isAuthFailure(status: number, body: unknown): boolean {
-  if (status === 401 || status === 403) return true;
-  const message = getMessage(body).toLowerCase();
-  if (!message) return false;
-  return (
-    message.includes('login')
-    || message.includes('登录')
-    || message.includes('未登录')
-    || message.includes('please login')
-    || message.includes('not login')
-  );
 }
 
 function toQueryValue(value: string | number | boolean | null | undefined): string | null {
@@ -175,6 +147,22 @@ export function normalizeQuarkFileType(item: QuarkFileItem | null | undefined): 
   return 'file';
 }
 
+export function formatQuarkTimestamp(value: unknown): string {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string' && !/^\d+$/.test(value.trim())) {
+    const parsed = new Date(value.trim());
+    return Number.isNaN(parsed.getTime()) ? value.trim() : parsed.toISOString();
+  }
+
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return String(value);
+
+  const millis = num > 1e12 ? num : num * 1000;
+  const date = new Date(millis);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toISOString();
+}
+
 function mapFileToResolvedNode(item: QuarkFileItem, resolvedPath: string): QuarkResolvedNode {
   return {
     path: resolvedPath,
@@ -183,8 +171,8 @@ function mapFileToResolvedNode(item: QuarkFileItem, resolvedPath: string): Quark
     file_id: String(item.fid ?? ''),
     parent_file_id: String(item.pdir_fid ?? ''),
     size: Number(item.size ?? 0),
-    updated_at: String(item.updated_at ?? ''),
-    created_at: String(item.created_at ?? ''),
+    updated_at: formatQuarkTimestamp(item.updated_at),
+    created_at: formatQuarkTimestamp(item.created_at),
     format_type: String(item.format_type ?? ''),
   };
 }
@@ -204,87 +192,169 @@ export async function collectQuarkCookieHeader(page: IPage | null): Promise<stri
   return formatCookieHeader(cookies);
 }
 
+function isQuarkEvalError<T>(value: QuarkEvalResult<T>): value is QuarkEvalError {
+  return isRecord(value) && '__error' in value && typeof value.__error === 'string';
+}
+
 export async function quarkRequestWithFallback<T>(
   page: IPage | null,
   requests: QuarkRequest[],
 ): Promise<QuarkRequestResult<T>> {
+  if (!page) throw new CommandExecutionError('Browser page required for Quark command');
   if (!Array.isArray(requests) || requests.length === 0) {
     throw new CommandExecutionError('Quark request list is empty');
   }
 
-  const cookieHeader = await collectQuarkCookieHeader(page);
-  let lastStatus = 0;
-  let lastEndpoint = '';
-  let lastBody: unknown = null;
-  let lastErrorMessage = '';
-
-  for (const request of requests) {
+  const preparedRequests = requests.map((request) => {
     const method = String(request.method ?? 'POST').toUpperCase();
     const endpoint = buildUrl(request.url, request.params, request.injectDefaultParams !== false);
-    lastEndpoint = endpoint;
-    try {
-      const headers: Record<string, string> = {
-        Accept: 'application/json, text/plain, */*',
-        Cookie: cookieHeader,
-        Referer: `${QUARK_WEB_ORIGIN}/`,
-        Origin: QUARK_WEB_ORIGIN,
-        ...(request.headers ?? {}),
+    const headers: Record<string, string> = {
+      Accept: 'application/json, text/plain, */*',
+      ...(request.headers ?? {}),
+    };
+
+    let body: string | undefined;
+    if (method !== 'GET' && request.body !== undefined) {
+      if (!Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')) {
+        headers['Content-Type'] = 'application/json';
+      }
+      body = headers['Content-Type']?.includes('application/json')
+        ? JSON.stringify(request.body)
+        : String(request.body);
+    }
+
+    return {
+      method,
+      endpoint,
+      headers,
+      body,
+    };
+  });
+
+  const result = await page.evaluate(`
+    async () => {
+      const requests = ${JSON.stringify(preparedRequests)};
+
+      function isRecord(value) {
+        return typeof value === 'object' && value !== null && !Array.isArray(value);
+      }
+
+      function getMessage(value) {
+        if (!isRecord(value)) return '';
+        const message = value.message ?? value.msg ?? value.error_message ?? value.error;
+        return typeof message === 'string' ? message.trim() : '';
+      }
+
+      function isSuccessEnvelope(body) {
+        if (!isRecord(body)) return true;
+        if ('success' in body) return body.success === true;
+        if ('code' in body) {
+          return body.code === 0 || body.code === '0' || body.code === 'OK';
+        }
+        return true;
+      }
+
+      function extractEnvelopeData(body) {
+        if (isRecord(body) && ('data' in body || 'metadata' in body)) {
+          return {
+            data: 'data' in body ? body.data : body,
+            metadata: isRecord(body.metadata) ? body.metadata : {},
+          };
+        }
+        return { data: body, metadata: {} };
+      }
+
+      function isAuthFailure(status, body) {
+        if (status === 401 || status === 403) return true;
+        const message = getMessage(body).toLowerCase();
+        if (!message) return false;
+        return (
+          message.includes('login')
+          || message.includes('登录')
+          || message.includes('未登录')
+          || message.includes('please login')
+          || message.includes('not login')
+        );
+      }
+
+      let lastError = {
+        __error: 'API_ERROR',
+        status: 0,
+        message: 'No Quark endpoint succeeded',
+        endpoint: requests[requests.length - 1]?.endpoint || '',
       };
 
-      let body: string | undefined;
-      if (method !== 'GET' && request.body !== undefined) {
-        if (!Object.keys(headers).some(key => key.toLowerCase() === 'content-type')) {
-          headers['Content-Type'] = 'application/json';
+      for (const request of requests) {
+        try {
+          const response = await fetch(request.endpoint, {
+            method: request.method,
+            credentials: 'include',
+            headers: request.headers,
+            body: request.body,
+          });
+
+          const text = await response.text();
+          let parsed = text;
+          try {
+            parsed = text ? JSON.parse(text) : {};
+          } catch {
+            parsed = text;
+          }
+
+          if (response.ok && isSuccessEnvelope(parsed)) {
+            const extracted = extractEnvelopeData(parsed);
+            return {
+              ok: true,
+              data: extracted.data,
+              raw: parsed,
+              metadata: extracted.metadata,
+              endpoint: request.endpoint,
+              status: response.status,
+            };
+          }
+
+          const message = getMessage(parsed) || text.slice(0, 240);
+          lastError = {
+            __error: isAuthFailure(response.status, parsed) ? 'AUTH_REQUIRED' : 'API_ERROR',
+            status: response.status,
+            message,
+            endpoint: request.endpoint,
+            body: parsed,
+          };
+
+          if (lastError.__error === 'AUTH_REQUIRED') {
+            return lastError;
+          }
+        } catch (error) {
+          lastError = {
+            __error: 'API_ERROR',
+            status: 0,
+            message: error instanceof Error ? error.message : String(error),
+            endpoint: request.endpoint,
+          };
         }
-        body = headers['Content-Type']?.includes('application/json')
-          ? JSON.stringify(request.body)
-          : String(request.body);
       }
 
-      const response = await fetch(endpoint, {
-        method,
-        headers,
-        body,
-      });
-      lastStatus = response.status;
-
-      const text = await response.text();
-      let parsed: unknown = text;
-      try {
-        parsed = text ? JSON.parse(text) : {};
-      } catch {
-        parsed = text;
-      }
-      lastBody = parsed;
-
-      if (response.ok && isSuccessEnvelope(parsed)) {
-        const extracted = extractEnvelopeData<T>(parsed);
-        return {
-          data: extracted.data,
-          raw: parsed,
-          metadata: extracted.metadata,
-          endpoint,
-          status: response.status,
-        };
-      }
-
-      lastErrorMessage = getMessage(parsed) || text.slice(0, 240);
-      if (isAuthFailure(response.status, parsed)) {
-        throw new AuthRequiredError('pan.quark.cn', lastErrorMessage || 'Quark login expired. Please re-login in Chrome.');
-      }
-    } catch (error) {
-      if (error instanceof AuthRequiredError) throw error;
-      lastErrorMessage = getErrorMessage(error);
+      return lastError;
     }
+  `) as QuarkEvalResult<T>;
+
+  if (isQuarkEvalError(result)) {
+    if (result.__error === 'AUTH_REQUIRED') {
+      throw new AuthRequiredError('pan.quark.cn', result.message || 'Quark login expired. Please re-login in Chrome.');
+    }
+    throw new CommandExecutionError(
+      `Quark API failed: HTTP ${result.status ?? '?'} ${result.message ?? 'Unknown error'} (${result.endpoint ?? 'unknown endpoint'})`,
+    );
   }
 
-  if (isAuthFailure(lastStatus, lastBody)) {
-    throw new AuthRequiredError('pan.quark.cn', lastErrorMessage || 'Quark login expired. Please re-login in Chrome.');
-  }
-
-  throw new CommandExecutionError(
-    `Quark API failed: HTTP ${lastStatus || '?'} ${lastErrorMessage || 'Unknown error'} (${lastEndpoint})`,
-  );
+  return {
+    data: result.data,
+    raw: result.raw,
+    metadata: result.metadata,
+    endpoint: result.endpoint,
+    status: result.status,
+  };
 }
 
 export async function quarkGetFileInfo(page: IPage | null, fileId: string): Promise<QuarkFileItem> {

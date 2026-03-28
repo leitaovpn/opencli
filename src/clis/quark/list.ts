@@ -4,6 +4,7 @@ import type { IPage } from '../../types.js';
 import {
   QUARK_WEB_ORIGIN,
   buildQuarkSort,
+  formatQuarkTimestamp,
   joinQuarkPath,
   normalizeQuarkFileType,
   normalizeQuarkParentFileId,
@@ -106,7 +107,7 @@ cli({
           name,
           type,
           size: type === 'folder' ? '-' : formatBytes(Number(item.size ?? 0)),
-          updated_at: String(item.updated_at ?? ''),
+          updated_at: formatQuarkTimestamp(item.updated_at),
           file_id: fileId,
           parent_file_id: String(item.pdir_fid ?? ''),
           ops: buildOps(childPath, fileId, showCommands, canBuildPath),
