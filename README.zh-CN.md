@@ -93,6 +93,7 @@ npm install -g @jackwener/opencli
 opencli list                              # 查看所有命令
 opencli list -f yaml                      # 以 YAML 列出所有命令
 opencli hackernews top --limit 5          # 公共 API，无需浏览器
+opencli slowread search 三体 --type quark # 公共 HTML 搜索，无需浏览器
 opencli bilibili hot --limit 5            # 浏览器命令
 opencli zhihu hot -f json                 # JSON 输出
 opencli zhihu hot -f yaml                 # YAML 输出
@@ -157,6 +158,7 @@ npm install -g @jackwener/opencli@latest
 | **linkedin** | `search` `timeline` | 浏览器 |
 | **reuters** | `search` | 浏览器 |
 | **smzdm** | `search` | 浏览器 |
+| **slowread** | `search` | 公开 |
 | **web** | `read` | 浏览器 |
 | **weibo** | `hot` `search` | 浏览器 |
 | **yahoo-finance** | `quote` | 浏览器 |
@@ -182,6 +184,17 @@ npm install -g @jackwener/opencli@latest
 | **substack** | `feed` `search` `publication` | 浏览器 |
 | **pixiv** | `ranking` `search` `user` `illusts` `detail` `download` | 浏览器 |
 | **tiktok** | `explore` `search` `profile` `user` `following` `follow` `unfollow` `like` `unlike` `comment` `save` `unsave` `live` `notifications` `friends` | 浏览器 |
+
+### Slowread 搜索
+
+无需启动浏览器，直接通过 `https://so.slowread.net/` 搜索网盘资源。
+
+```bash
+opencli slowread search 三体
+opencli slowread search 三体 --type quark --limit 5
+```
+
+- `--type`: `all`、`quark`、`ali`、`baidu`、`xunlei`、`uc`、`123pan`
 
 ### AliPan Save 快速开始
 

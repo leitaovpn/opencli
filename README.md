@@ -91,6 +91,7 @@ Then use directly:
 opencli list                              # See all commands
 opencli list -f yaml                      # List commands as YAML
 opencli hackernews top --limit 5          # Public API, no browser
+opencli slowread search 三体 --type quark # Public HTML search, no browser
 opencli bilibili hot --limit 5            # Browser command
 opencli zhihu hot -f json                 # JSON output
 opencli zhihu hot -f yaml                 # YAML output
@@ -155,6 +156,7 @@ Run `opencli list` for the live registry.
 | **linkedin** | `search` `timeline` | Browser |
 | **reuters** | `search` | Browser |
 | **smzdm** | `search` | Browser |
+| **slowread** | `search` | Public |
 | **web** | `read` | Browser |
 | **weibo** | `hot` `search` | Browser |
 | **yahoo-finance** | `quote` | Browser |
@@ -180,6 +182,17 @@ Run `opencli list` for the live registry.
 | **substack** | `feed` `search` `publication` | Browser |
 | **pixiv** | `ranking` `search` `user` `illusts` `detail` `download` | Browser |
 | **tiktok** | `explore` `search` `profile` `user` `following` `follow` `unfollow` `like` `unlike` `comment` `save` `unsave` `live` `notifications` `friends` | Browser |
+
+### Slowread Search
+
+Search pan resources from `https://so.slowread.net/` without launching a browser.
+
+```bash
+opencli slowread search 三体
+opencli slowread search 三体 --type quark --limit 5
+```
+
+- `--type`: `all`, `quark`, `ali`, `baidu`, `xunlei`, `uc`, `123pan`
 
 ### AliPan Save Quick Start
 
