@@ -3,6 +3,8 @@ import { cli, Strategy } from '../../registry.js';
 import {
   QUARK_DRIVE_ORIGIN,
   QUARK_WEB_ORIGIN,
+  getQuarkShareToken,
+  listAllShareChildren,
   normalizeQuarkFileType,
   normalizeQuarkParentFileId,
   quarkDeleteFiles,
@@ -10,24 +12,8 @@ import {
   quarkRequestWithFallback,
   quarkResolvePath,
 } from './utils.js';
+import type { QuarkShareItem } from './utils.js';
 import { normalizeQuarkSharePath, parseQuarkShareReference } from './save-shared.js';
-
-type QuarkShareTokenResponse = {
-  stoken?: string;
-};
-
-type QuarkShareItem = {
-  fid?: string;
-  pdir_fid?: string;
-  file_name?: string;
-  file_type?: number;
-  size?: number;
-  share_fid_token?: string;
-};
-
-type QuarkShareDetailResponse = {
-  list?: QuarkShareItem[];
-};
 
 type QuarkShareSaveResponse = {
   task_id?: string;
@@ -59,12 +45,6 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function ensureShareToken(value: string): string {
-  const normalized = String(value ?? '').trim();
-  if (!normalized) throw new CommandExecutionError('Quark share token response missing stoken');
-  return normalized;
-}
-
 function collectSavedIds(payload: QuarkTaskResponse | null | undefined): string[] {
   const saved = new Set<string>();
   const pushMany = (values: unknown) => {
@@ -86,81 +66,6 @@ function countFailedItems(payload: QuarkTaskResponse | null | undefined): number
   const detailList = payload?.batch_save_as?.sub_task_detail_list;
   if (!Array.isArray(detailList)) return 0;
   return detailList.filter(detail => String(detail?.fail_reason ?? '').trim()).length;
-}
-
-async function getQuarkShareToken(
-  page: Parameters<typeof quarkRequestWithFallback>[0],
-  shareId: string,
-  sharePwd: string,
-): Promise<string> {
-  const result = await quarkRequestWithFallback<QuarkShareTokenResponse>(page, [
-    {
-      url: `${QUARK_DRIVE_ORIGIN}/1/clouddrive/share/sharepage/token`,
-      body: {
-        pwd_id: shareId,
-        passcode: sharePwd,
-        support_visit_limit_private_share: true,
-      },
-    },
-  ]);
-
-  return ensureShareToken(result.data?.stoken ?? '');
-}
-
-async function listShareChildrenPage(
-  page: Parameters<typeof quarkRequestWithFallback>[0],
-  options: {
-    shareId: string;
-    stoken: string;
-    parentFid: string;
-    pageNo?: number;
-  },
-): Promise<QuarkShareItem[]> {
-  const result = await quarkRequestWithFallback<QuarkShareDetailResponse>(page, [
-    {
-      url: `${QUARK_DRIVE_ORIGIN}/1/clouddrive/share/sharepage/detail`,
-      method: 'GET',
-      params: {
-        pwd_id: options.shareId,
-        stoken: options.stoken,
-        pdir_fid: options.parentFid,
-        force: 0,
-        _page: options.pageNo ?? 1,
-        _size: 100,
-        _fetch_banner: 0,
-        _fetch_share: 1,
-        _fetch_total: 0,
-        fetch_update_flag: 1,
-        support_visit_limit_private_share: true,
-      },
-    },
-  ]);
-
-  return Array.isArray(result.data?.list) ? result.data.list : [];
-}
-
-async function listAllShareChildren(
-  page: Parameters<typeof quarkRequestWithFallback>[0],
-  options: {
-    shareId: string;
-    stoken: string;
-    parentFid: string;
-  },
-): Promise<QuarkShareItem[]> {
-  const items: QuarkShareItem[] = [];
-  let pageNo = 1;
-
-  for (;;) {
-    const pageItems = await listShareChildrenPage(page, {
-      ...options,
-      pageNo,
-    });
-    items.push(...pageItems);
-    if (pageItems.length < 100) break;
-    pageNo += 1;
-  }
-
-  return items;
 }
 
 async function resolveSharePath(
@@ -380,7 +285,7 @@ cli({
       fid_list: selectedItems.map(item => item.fid),
       fid_token_list: selectedItems.map(item => item.shareFidToken),
     };
-    if (selectedItems.length === 1) {
+    if (selectedItems.length === 1 && selectedItems[0].type !== 'folder') {
       saveBody.mode = 'inc_single';
     }
 

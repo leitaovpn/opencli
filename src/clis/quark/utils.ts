@@ -604,3 +604,103 @@ export async function quarkDeleteFiles(page: IPage | null, fileIds: string[]): P
 
   return result.endpoint;
 }
+
+/* ── Share API ──────────────────────────────────────────────────── */
+
+export type QuarkShareTokenResponse = {
+  stoken?: string;
+};
+
+export type QuarkShareItem = {
+  fid?: string;
+  pdir_fid?: string;
+  file_name?: string;
+  file_type?: number;
+  size?: number;
+  share_fid_token?: string;
+};
+
+export type QuarkShareDetailResponse = {
+  list?: QuarkShareItem[];
+};
+
+function ensureShareToken(value: string): string {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) throw new CommandExecutionError('Quark share token response missing stoken');
+  return normalized;
+}
+
+export async function getQuarkShareToken(
+  page: Parameters<typeof quarkRequestWithFallback>[0],
+  shareId: string,
+  sharePwd: string,
+): Promise<string> {
+  const result = await quarkRequestWithFallback<QuarkShareTokenResponse>(page, [
+    {
+      url: `${QUARK_DRIVE_ORIGIN}/1/clouddrive/share/sharepage/token`,
+      body: {
+        pwd_id: shareId,
+        passcode: sharePwd,
+        support_visit_limit_private_share: true,
+      },
+    },
+  ]);
+
+  return ensureShareToken(result.data?.stoken ?? '');
+}
+
+export async function listShareChildrenPage(
+  page: Parameters<typeof quarkRequestWithFallback>[0],
+  options: {
+    shareId: string;
+    stoken: string;
+    parentFid: string;
+    pageNo?: number;
+  },
+): Promise<QuarkShareItem[]> {
+  const result = await quarkRequestWithFallback<QuarkShareDetailResponse>(page, [
+    {
+      url: `${QUARK_DRIVE_ORIGIN}/1/clouddrive/share/sharepage/detail`,
+      method: 'GET',
+      params: {
+        pwd_id: options.shareId,
+        stoken: options.stoken,
+        pdir_fid: options.parentFid,
+        force: 0,
+        _page: options.pageNo ?? 1,
+        _size: 100,
+        _fetch_banner: 0,
+        _fetch_share: 1,
+        _fetch_total: 0,
+        fetch_update_flag: 1,
+        support_visit_limit_private_share: true,
+      },
+    },
+  ]);
+
+  return Array.isArray(result.data?.list) ? result.data.list : [];
+}
+
+export async function listAllShareChildren(
+  page: Parameters<typeof quarkRequestWithFallback>[0],
+  options: {
+    shareId: string;
+    stoken: string;
+    parentFid: string;
+  },
+): Promise<QuarkShareItem[]> {
+  const items: QuarkShareItem[] = [];
+  let pageNo = 1;
+
+  for (;;) {
+    const pageItems = await listShareChildrenPage(page, {
+      ...options,
+      pageNo,
+    });
+    items.push(...pageItems);
+    if (pageItems.length < 100) break;
+    pageNo += 1;
+  }
+
+  return items;
+}
