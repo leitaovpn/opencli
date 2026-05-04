@@ -510,3 +510,95 @@ export async function alipanResolvePath(
 
   return result;
 }
+
+/* ── Share API ──────────────────────────────────────────────────── */
+
+export type AliPanShareTokenResponse = {
+  share_token?: string;
+};
+
+export type AliPanShareListItem = {
+  file_id?: string;
+  name?: string;
+  type?: string;
+  size?: number;
+  parent_file_id?: string;
+};
+
+export type AliPanShareListResponse = {
+  items?: AliPanShareListItem[];
+  next_marker?: string;
+};
+
+export async function alipanGetShareToken(
+  page: Parameters<typeof alipanPostWithFallback>[0],
+  shareId: string,
+  sharePwd: string,
+): Promise<string> {
+  const result = await alipanPostWithFallback<AliPanShareTokenResponse>(page, [
+    {
+      url: 'https://api.aliyundrive.com/v2/share_link/get_share_token',
+      body: {
+        share_id: shareId,
+        share_pwd: sharePwd,
+      },
+      injectDriveId: false,
+    },
+  ]);
+
+  const shareToken = String(result.data?.share_token ?? '').trim();
+  if (!shareToken) {
+    throw new CommandExecutionError('AliPan share token response missing share_token');
+  }
+  return shareToken;
+}
+
+export async function alipanListShareChildren(
+  page: Parameters<typeof alipanPostWithFallback>[0],
+  options: {
+    shareId: string;
+    shareToken: string;
+    parentFileId: string;
+    marker?: string;
+  },
+): Promise<AliPanShareListResponse> {
+  const result = await alipanPostWithFallback<AliPanShareListResponse>(page, [
+    {
+      url: 'https://api.aliyundrive.com/adrive/v2/file/list_by_share',
+      body: {
+        share_id: options.shareId,
+        parent_file_id: options.parentFileId,
+        limit: 200,
+        order_by: 'name',
+        order_direction: 'ASC',
+        marker: options.marker ?? '',
+      },
+      injectDriveId: false,
+      injectAuthToken: false,
+      injectShareToken: true,
+      shareToken: options.shareToken,
+    },
+  ]);
+
+  return result.data || {};
+}
+
+export async function alipanListAllShareChildren(
+  page: Parameters<typeof alipanPostWithFallback>[0],
+  options: {
+    shareId: string;
+    shareToken: string;
+    parentFileId: string;
+  },
+): Promise<AliPanShareListItem[]> {
+  const items: AliPanShareListItem[] = [];
+  let marker = '';
+
+  do {
+    const listed = await alipanListShareChildren(page, { ...options, marker });
+    items.push(...(Array.isArray(listed.items) ? listed.items : []));
+    marker = String(listed.next_marker ?? '').trim();
+  } while (marker);
+
+  return items;
+}

@@ -1,24 +1,13 @@
 import { CommandExecutionError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
-import { alipanResolvePath, alipanPostWithFallback } from './utils.js';
+import {
+  alipanGetShareToken,
+  alipanListAllShareChildren,
+  alipanPostWithFallback,
+  alipanResolvePath,
+} from './utils.js';
+import type { AliPanShareListItem } from './utils.js';
 import { normalizeAliPanSharePath, parseAliPanShareReference } from './save-shared.js';
-
-type AliPanShareTokenResponse = {
-  share_token?: string;
-};
-
-type AliPanShareListItem = {
-  file_id?: string;
-  name?: string;
-  type?: string;
-  size?: number;
-  parent_file_id?: string;
-};
-
-type AliPanShareListResponse = {
-  items?: AliPanShareListItem[];
-  next_marker?: string;
-};
 
 type AliPanBatchResponseItem = {
   id?: string;
@@ -69,79 +58,6 @@ async function getAliPanDriveContext(page: { evaluate(js: string): Promise<unkno
   return result;
 }
 
-async function getShareToken(
-  page: Parameters<typeof alipanPostWithFallback>[0],
-  shareId: string,
-  sharePwd: string,
-): Promise<string> {
-  const result = await alipanPostWithFallback<AliPanShareTokenResponse>(page, [
-    {
-      url: 'https://api.aliyundrive.com/v2/share_link/get_share_token',
-      body: {
-        share_id: shareId,
-        share_pwd: sharePwd,
-      },
-      injectDriveId: false,
-    },
-  ]);
-
-  const shareToken = String(result.data?.share_token ?? '').trim();
-  if (!shareToken) {
-    throw new CommandExecutionError('AliPan share token response missing share_token');
-  }
-  return shareToken;
-}
-
-async function listShareChildren(
-  page: Parameters<typeof alipanPostWithFallback>[0],
-  options: {
-    shareId: string;
-    shareToken: string;
-    parentFileId: string;
-    marker?: string;
-  },
-): Promise<AliPanShareListResponse> {
-  const result = await alipanPostWithFallback<AliPanShareListResponse>(page, [
-    {
-      url: 'https://api.aliyundrive.com/adrive/v2/file/list_by_share',
-      body: {
-        share_id: options.shareId,
-        parent_file_id: options.parentFileId,
-        limit: 200,
-        order_by: 'name',
-        order_direction: 'ASC',
-        marker: options.marker ?? '',
-      },
-      injectDriveId: false,
-      injectAuthToken: false,
-      injectShareToken: true,
-      shareToken: options.shareToken,
-    },
-  ]);
-
-  return result.data || {};
-}
-
-async function listAllShareChildren(
-  page: Parameters<typeof alipanPostWithFallback>[0],
-  options: {
-    shareId: string;
-    shareToken: string;
-    parentFileId: string;
-  },
-): Promise<AliPanShareListItem[]> {
-  const items: AliPanShareListItem[] = [];
-  let marker = '';
-
-  do {
-    const listed = await listShareChildren(page, { ...options, marker });
-    items.push(...(Array.isArray(listed.items) ? listed.items : []));
-    marker = String(listed.next_marker ?? '').trim();
-  } while (marker);
-
-  return items;
-}
-
 async function resolveSharePath(
   page: Parameters<typeof alipanPostWithFallback>[0],
   options: {
@@ -160,7 +76,7 @@ async function resolveSharePath(
   let found: AliPanShareListItem | null = null;
 
   for (const segment of segments) {
-    const children = await listAllShareChildren(page, {
+    const children = await alipanListAllShareChildren(page, {
       shareId: options.shareId,
       shareToken: options.shareToken,
       parentFileId,
@@ -297,7 +213,7 @@ cli({
       : null;
     const toParentFileId = destination?.file_id ?? toParentFileIdArg;
 
-    const shareToken = await getShareToken(page, shareRef.shareId, shareRef.sharePwd);
+    const shareToken = await alipanGetShareToken(page, shareRef.shareId, shareRef.sharePwd);
 
     let selectedItems: SelectedShareItem[];
     let sourceLabel: string;
@@ -318,7 +234,7 @@ cli({
       }];
       sourceLabel = `/file/${shareRef.initialFileId}`;
     } else {
-      const rootItems = await listAllShareChildren(page, {
+      const rootItems = await alipanListAllShareChildren(page, {
         shareId: shareRef.shareId,
         shareToken,
         parentFileId: 'root',
