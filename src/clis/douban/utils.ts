@@ -9,7 +9,7 @@ function clampLimit(limit: number): number {
   return Math.max(1, Math.min(limit || 20, 50));
 }
 
-async function ensureDoubanReady(page: IPage): Promise<void> {
+export async function ensureDoubanReady(page: IPage): Promise<void> {
   const state = await page.evaluate(`
     (() => {
       const title = (document.title || '').trim();
